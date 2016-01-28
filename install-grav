@@ -6,7 +6,7 @@
 # Checking permissions
 if [[ $EUID -ne 0 ]]; then
     grav_lib_echo_fail "Sudo privilege required..."
-    grav_lib_echo_fail "Uses: wget -qO grav rt.cx/grav && sudo bash grav"
+    grav_lib_echo_fail "wget -O - https://raw.githubusercontent.com/Vivalldi/grav-scripts/master/install-grav | sudo bash"
     exit 100
 fi
 
