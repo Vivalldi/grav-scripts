@@ -150,7 +150,7 @@ function grav_install_grav()
     cp -f webserver-configs/nginx.conf /etc/nginx/sites-available/grav
     rm /etc/nginx/sites-enabled/grav &>> /dev/null
     ln -s /etc/nginx/sites-available/grav /etc/nginx/sites-enabled/grav
-    [ -d $HOME/www/html ] || mkdir $HOME/www/html #MAKE DIR IF DOESN'T EXIST
+    [ -d $HOME/www/html ] || mkdir $HOME/www/html/ #MAKE DIR IF DOESN'T EXIST
     cp -rf /tmp/grav $HOME/www/html
     
     service nginx restart
