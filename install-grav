@@ -146,15 +146,15 @@ function grav_install_grav()
     #cd /home/$USER/www/html
     cd /tmp/grav
     grav_lib_echo "Installing Grav, please wait..."
-    sed -i 's/\/home\/user/\/home\/root/g' webserver-configs/nginx.conf || grav_lib_error "Unable to configure NGINX"
+    sed -i 's/\/home\/user/$HOME/g' webserver-configs/nginx.conf || grav_lib_error "Unable to configure NGINX"
     cp -f webserver-configs/nginx.conf /etc/nginx/sites-available/grav
     rm /etc/nginx/sites-enabled/grav &>> /dev/null
     ln -s /etc/nginx/sites-available/grav /etc/nginx/sites-enabled/grav
-    cp -rf /tmp/grav /home/$USER/www/html
+    cp -rf /tmp/grav $HOME/www/html
     
     service nginx restart
     
-    cd /home/$USER/www/html/grav
+    cd $HOME/www/html/grav
     bin/grav install
     
     #PERMISSIONS
