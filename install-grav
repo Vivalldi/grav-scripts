@@ -1,0 +1,178 @@
+#!/bin/bash
+
+# EasyEngine update script.
+# This script is designed to install latest EasyEngine or
+# to update current EasyEngine from 2.x to 3.x
+
+# Checking permissions
+if [[ $EUID -ne 0 ]]; then
+    grav_lib_echo_fail "Sudo privilege required..."
+    grav_lib_echo_fail "Uses: wget -qO grav rt.cx/grav && sudo bash grav"
+    exit 100
+fi
+
+# Define echo function
+# Purple color
+function grav_lib_prompt()
+{
+    echo $(tput setaf 5)$@$(tput sgr0)
+}
+# Blue color
+function grav_lib_echo()
+{
+    echo $(tput setaf 6)$@$(tput sgr0)
+}
+# White color
+function grav_lib_echo_info()
+{
+    echo $(tput setaf 7)$@$(tput sgr0)
+}
+# Green color
+function grav_lib_echo_success()
+{
+    echo $(tput setaf 2)$@$(tput sgr0)
+}
+# Red color
+function grav_lib_echo_fail()
+{
+    echo $(tput setaf 1)$@$(tput sgr0)
+}
+
+# Capture errors
+function grav_lib_error()
+{
+    echo "[ `date` ] $(tput setaf 1)$@$(tput sgr0)"
+    exit $2
+}
+
+# Checking permissions
+if [[ $EUID -ne 0 ]]; then
+    grav_lib_echo_fail "Sudo privilege required..."
+    grav_lib_echo_fail "Uses: wget -qO grav rt.cx/grav && sudo bash grav"
+    exit 100
+fi
+
+# Execute: apt-get update
+grav_lib_echo "Executing apt-get update, please wait..."
+apt-get update &>> /dev/null
+
+# Checking lsb_release package
+if [ ! -x /usr/bin/lsb_release ]; then
+    grav_lib_echo "Installing lsb-release, please wait..."
+    apt-get -y install lsb-release &>> /dev/null
+fi
+
+# Define variables for later use
+grav_branch=$1
+readonly grav_version="1.0.8"
+readonly grav_log_dir=/var/log/grav/
+readonly grav_install_log=/var/log/grav/install.log
+readonly grav_linux_distro=$(lsb_release -i | awk '{print $3}')
+readonly grav_distro_version=$(lsb_release -sc)
+
+# Checking linux distro
+if [ "$grav_linux_distro" != "Ubuntu" ] && [ "$grav_linux_distro" != "Debian" ]; then
+    grav_lib_echo_fail "This installer is made for Ubuntu and Debian only as of now"
+    grav_lib_echo_fail "This installer only supports Ubuntu 12.04/14.04 and Debian 7.x/8.x"
+    exit 100
+fi
+
+# Installer only supports all Ubuntu/Debian distro except the distro reached EOL
+lsb_release -d | egrep -e "12.04|14.04|wheezy|jessie" &>> /dev/null
+if [ "$?" -ne "0" ]; then
+    grav_lib_echo_fail "This installer only supports Ubuntu 12.04/14.04 and Debian 7.x/8.x"
+    exit 100
+fi
+
+# Pre checks to avoid later screw ups
+# Checking Grav log directory
+if [ ! -d $grav_log_dir ]; then
+
+    grav_lib_echo "Creating Grav log directory, please wait..."
+    mkdir -p $grav_log_dir || grav_lib_error "Unable to create log directory $grav_log_dir, exit status " $?
+
+    # Create Grav log files
+    touch /var/log/grav/{grav.log,install.log}
+
+    # Keep Grav log folder accessible to root only
+    chmod -R 700 /var/log/grav || grav_lib_error "Unable to change permissions for Grav log folder, exit status " $?
+fi
+
+# Install Git, Tar,  and required packages
+# Generate Locale
+function grav_install_dep()
+{
+    grav_lib_echo "Installing required packages, please wait..."
+    apt-get -yq install gcc curl gzip git tar || grav_lib_error "Unable to install required packages" 1
+    grav_lib_echo_success "Success: Dependencies Installed"
+
+    # Generating Locale
+    locale-gen en &>> /dev/null
+}
+
+# Install NGINX with php
+function grav_install_nginx()
+{
+    grav_lib_echo "Installing Nginx, please wait..."
+    echo "deb http://ppa.launchpad.net/nginx/stable/ubuntu $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/nginx-stable.list
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys C300EE8C &>> /dev/null
+    apt-get -yq install nginx || grav_lib_error "Unable to install NGINX" 1
+    service nginx start &>> /dev/null
+    grav_lib_echo_success "Success: Nginx Installed"
+    
+    grav_lib_echo "Installing PHP, please wait..."
+    apt-get -yq install php5-fpm || grav_lib_error "Unable to install PHP"
+    sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php5/fpm/php.ini || grav_lib_error "Unable to configure PHP"
+    sed -i 's/cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php5/fpm/php.ini || grav_lib_error "Unable to configure PHP (#1)"
+    sed -i 's/listen = 127.0.0.1:9000/listen = \/var\/run\/php5-fpm.sock/g' /etc/php5/fpm/pool.d/www.conf || grav_lib_error "Unable to configure PHP (#2)"
+    service php5-fpm start &>> /dev/null
+    grav_lib_echo_success "Success: PHP Installed"
+}
+
+# Install Grav
+function grav_install_grav()
+{
+    # Remove old clone of EasyEngine (ee) if any
+    rm -rf /tmp/grav &>> /dev/null
+
+    # Clone EE 3.0 Python ee_branch
+    grav_lib_echo "Cloning Grav, please wait..."
+    if [ "$grav_branch" = "" ]; then
+        grav_branch=master
+    fi
+    #/home/$USER/www/html/grav-$grav_version
+    git clone -b $grav_branch https://github.com/getgrav/grav.git /tmp/grav --quiet > /dev/null \
+    || grav_lib_error "Unable to clone Grav, exit status" $? 
+
+    #cd /home/$USER/www/html
+    cd /tmp/grav
+    grav_lib_echo "Installing Grav, please wait..."
+    sed -i 's/\/home\/user/\/home\/root/g' webserver-configs/nginx.conf || grav_lib_error "Unable to configure NGINX"
+    cp -f webserver-configs/nginx.conf /etc/nginx/sites-available/grav
+    rm /etc/nginx/sites-enabled/grav &>> /dev/null
+    ln -s /etc/nginx/sites-available/grav /etc/nginx/sites-enabled/grav
+    cp -rf /tmp/grav /home/$USER/www/html
+    
+    service nginx restart
+    
+    cd /home/$USER/www/html/grav
+    bin/grav install
+    
+    #PERMISSIONS
+    chown www-data:www-data .
+    chown -R www-data:www-data *
+    find . -type f | xargs chmod 664
+    find ./bin -type f | xargs chmod 775
+    find . -type d | xargs chmod 775
+    find . -type d | xargs chmod +s
+    umask 0002
+}
+
+#Configur
+#NGINX /etc/nginx/nginx.conf
+
+grav_install_dep | tee -ai $grav_install_log
+grav_install_nginx | tee -ai $grav_install_log
+grav_install_grav | tee -ai $grav_install_log
+
+grav_lib_success "Visit http://$HOSTNAME/grav"
