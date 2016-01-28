@@ -175,4 +175,4 @@ grav_install_dep | tee -ai $grav_install_log
 grav_install_nginx | tee -ai $grav_install_log
 grav_install_grav | tee -ai $grav_install_log
 
-grav_lib_success "Visit http://$HOSTNAME/grav"
+grav_lib_echo_success "Visit http://$HOSTNAME/grav"
