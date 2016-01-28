@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# EasyEngine update script.
-# This script is designed to install latest EasyEngine or
-# to update current EasyEngine from 2.x to 3.x
+# Install Grav on NGINX (Ubuntu and Debian)
+# @Author Tyler Cosgrove
 
 # Checking permissions
 if [[ $EUID -ne 0 ]]; then
@@ -103,7 +102,7 @@ fi
 function grav_install_dep()
 {
     grav_lib_echo "Installing required packages, please wait..."
-    apt-get -yq install gcc curl gzip git tar || grav_lib_error "Unable to install required packages" 1
+    apt-get -yq install git || grav_lib_error "Unable to install required packages" 1
     grav_lib_echo_success "Success: Dependencies Installed"
 
     # Generating Locale
