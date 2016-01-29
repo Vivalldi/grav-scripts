@@ -80,7 +80,7 @@ fi
 # Checking Grav log directory
 if [ ! -d $grav_log_dir ]; then
 
-    grav_echo "Creating Grav log directory, please wait..."
+    grav_echo "Creating Grav logs, please wait..."
     mkdir -p $grav_log_dir || grav_error "Unable to create log directory $grav_log_dir, exit status " $?
 
     # Create Grav log files
@@ -88,6 +88,8 @@ if [ ! -d $grav_log_dir ]; then
 
     # Keep Grav log folder accessible to root only
     chmod -R 700 /var/log/grav || grav_error "Unable to change permissions for Grav log folder, exit status " $?
+    grav_echo_success "Success: Grav logs created!"
+    grav_echo ""
 fi
 
 # Install Git, and required packages
@@ -97,6 +99,7 @@ function grav_install_dep()
     grav_echo "Installing required packages, please wait..."
     apt-get -y install git  &>> /dev/null || grav_error "Unable to install required packages" $?
     grav_echo_success "Success: Dependencies Installed"
+    grav_echo ""
 
     # Generating Locale
     locale-gen en &>> /dev/null
@@ -111,6 +114,7 @@ function grav_install_nginx()
     apt-get -yq install nginx || grav_error "Unable to install NGINX" 1
     service nginx start &>> /dev/null
     grav_echo_success "Success: Nginx Installed"
+    grav_echo ""
 }
 
 # Install Php for Nginx
@@ -119,13 +123,15 @@ function grav_install_php()
     grav_echo "Installing PHP, please wait..."
     apt-get -y install php5-fpm php5-cli php5-gd php5-curl php5-apcu &>> /dev/null || grav_error "Unable to install PHP" 1
     grav_echo_success "Success: PHP Installed!"
+    grav_echo ""
 }
 
 # Configure PHP and Nginx
 function grav_configure_nginx()
 {
     # Configure PHP
-    cd /etc/php5/fpm/pool.d
+    grav_echo "Configuring PHP"
+    cd /etc/php5/fpm/pool.d || grav_error "Could not cd /etc/php5/fpm/pool.d $1"
     
     
     cat > grav.conf <<-grav_end_document
@@ -148,7 +154,8 @@ pm.max_spare_servers = 3
 chdir = /
 grav_end_document
     cat grav.conf
-    
+    grav_echo_success "Success: PHP Configured!"
+    grav_echo ""
     useradd -m grav
     
     # Create root directory
@@ -252,7 +259,7 @@ grav_end_document
     service nginx restart
 }
 
-#Configure
+#Configur
 #NGINX /etc/nginx/nginx.conf
 
 grav_install_dep | tee -ai $grav_install_log
