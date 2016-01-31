@@ -3,6 +3,12 @@
 # Install Grav on NGINX (Ubuntu and Debian)
 # @Author Tyler Cosgrove
 
+# Variables
+APPNAME=grav
+grav_branch=master
+readonly grav_linux_distro=$(lsb_release -i | awk '{print $3}')
+
+
 # Define echo function
 # Purple color
 function grav_prompt()
@@ -29,243 +35,107 @@ function grav_echo_fail()
 {
     echo $(tput setaf 1)$@$(tput sgr0)
 }
-
 # Capture errors
-function grav_error()
+function grav_echo_error()
 {
     echo "[ `date` ] $(tput setaf 1)$@$(tput sgr0)"
     exit $2
 }
 
+
+function install_nginx
+{
+    grav_echo "Installing NGINX"
+    apt-get install -y nginx &>> /dev/null || grav_echo_error "Unable to install NGINX"
+    grav_echo "Finished Installing NGINX"
+}
+
+function install_php_nginx
+{
+    grav_echo "Installing PHP (NGINX)"
+    apt-get install -y php5-fpm php5-cli php5-curl &>> /dev/null || grav_echo_error "Unable to install PHP"
+
+    # Configure PHP Processor
+    sed -i s/\;cgi\.fix_pathinfo\s*\=\s*1/cgi.fix_pathinfo\=0/ /etc/php5/fpm/php.ini
+    service php5-fpm restart
+    grav_echo "Finished Installing NGINX"
+}
+
+function configure_nginx
+{
+    grav_echo "Configuring NGINX"
+    if [ -z "$1" ]; then
+        grav_echo_error "ERROR: Not enough args passed to 'configure_nginx'. Exiting..."
+    elif [ ! -e "$1" ]; then
+        grav_echo_error "ERROR: File passed to 'configure_nginx' does not exist: $1 "
+    fi
+    sed -i "s|\/home\/user\/www\/html;|\/home\/"${SUDO_USER:-$(whoami)}"\/www\/html;|g" $1 &>> /dev/null || grav_echo_erro "Issue setting server root"
+    sed "s|server_name localhost;|"${2:-localhost}"|g" $1 &>> /dev/null || grav_echo_error "Issue replacing server name"
+    cp $1 /etc/nginx/sites-available/$APPNAME
+    rm /etc/nginx/sites-enabled/$APPNAME
+    rm /etc/nginx/sites-enabled/default
+    ln -s /etc/nginx/sites-available/$APPNAME /etc/nginx/sites-enabled/$APPNAME
+    
+    service nginx restart
+    grav_echo "Finished Configuring NGINX"
+}
+
+function install_grav
+{
+    grav_echo "Installing Grav..."
+    git clone -b $grav_branch https://github.com/getgrav/grav.git /tmp/grav --quiet|| grav_echo_error "Unable to clone Grav, exit status" $?
+    root=/home/${SUDO_USER:-$(whoami)}/www/html
+    rm -Rf $root
+    if [ ! -d $root ]; then
+        mkdir -p /home/${SUDO_USER:-$(whoami)}/www
+    fi
+    mv /tmp/grav $root
+    rm -Rf /tmp/grav
+    cd $root
+    chown ${SUDO_USER:-$(whoami)}:www-data .
+    chown -R ${SUDO_USER:-$(whoami)}:www-data *
+    find . -type f | xargs chmod 664
+    find ./bin -type f | xargs chmod 775
+    find . -type d | xargs chmod 775
+    find . -type d | xargs chmod +s
+    su - $SUDO_USER -c "cd "$root"&&umask 0002&&bin/grav install&&bin/grav clear"
+    configure_nginx /home/${SUDO_USER:-$(whoami)}/www/html/webserver-configs/nginx.conf
+    grav_echo "Finish Installing Grav"
+}
+
+function initialize
+{
+    grav_echo "Initializing..."
+    apt-get update &>> /dev/null || grav_echo_fail "Unable to update system"
+    # apt-get -y upgrade &>> /dev/null || grav_echo_fail "Unable to upgrade system"
+    # Checking lsb_release package
+    if [ ! -x /usr/bin/lsb_release ]; then
+        grav_echo "Installing lsb-release, please wait..."
+        apt-get -y install lsb-release &>> /dev/null
+    fi
+
+    # Checking linux distro
+    if [ "$grav_linux_distro" != "Ubuntu" ] && [ "$grav_linux_distro" != "Debian" ]; then
+        grav_echo_fail "This installer is made for Ubuntu and Debian only as of now"
+        grav_echo_fail "This installer only supports Ubuntu 12.04/14.04 and Debian 7.x/8.x"
+        exit 100
+    fi
+
+    # Installer only supports all Ubuntu/Debian distro except the distro reached EOL
+    lsb_release -d | egrep -e "12.04|14.04|wheezy|jessie" &>> /dev/null
+    if [ "$?" -ne "0" ]; then
+        grav_echo_fail "This installer only supports Ubuntu 12.04/14.04 and Debian 7.x/8.x"
+        exit 100
+    fi
+}
+
 # Checking permissions
 if [[ $EUID -ne 0 ]]; then
     grav_echo_fail "Sudo privilege required..."
-    grav_echo_fail "Uses: wget -qO grav rt.cx/grav && sudo bash grav"
     exit 100
 fi
 
-# Execute: apt-get update
-grav_echo "Executing apt-get update, please wait..."
-apt-get update &>> /dev/null
-
-# Checking lsb_release package
-if [ ! -x /usr/bin/lsb_release ]; then
-    grav_echo "Installing lsb-release, please wait..."
-    apt-get -y install lsb-release &>> /dev/null
-fi
-
-# Define variables for later use
-grav_branch=$1
-readonly grav_version="1.0.8"
-readonly grav_log_dir=/var/log/grav/
-readonly grav_install_log=/var/log/grav/install.log
-readonly grav_linux_distro=$(lsb_release -i | awk '{print $3}')
-readonly grav_distro_version=$(lsb_release -sc)
-
-# Checking linux distro
-if [ "$grav_linux_distro" != "Ubuntu" ] && [ "$grav_linux_distro" != "Debian" ]; then
-    grav_echo_fail "This installer is made for Ubuntu and Debian only as of now"
-    grav_echo_fail "This installer only supports Ubuntu 12.04/14.04 and Debian 7.x/8.x"
-    exit 100
-fi
-
-# Installer only supports all Ubuntu/Debian distro except the distro reached EOL
-lsb_release -d | egrep -e "12.04|14.04|wheezy|jessie" &>> /dev/null
-if [ "$?" -ne "0" ]; then
-    grav_echo_fail "This installer only supports Ubuntu 12.04/14.04 and Debian 7.x/8.x"
-    exit 100
-fi
-
-# Pre checks to avoid later screw ups
-# Checking Grav log directory
-if [ ! -d $grav_log_dir ]; then
-
-    grav_echo "Creating Grav logs, please wait..."
-    mkdir -p $grav_log_dir || grav_error "Unable to create log directory $grav_log_dir, exit status " $?
-
-    # Create Grav log files
-    touch $grav_log_dir{grav.log,install.log}
-
-    # Keep Grav log folder accessible to root only
-    chmod -R 700 /var/log/grav || grav_error "Unable to change permissions for Grav log folder, exit status " $?
-    grav_echo_success "Success: Grav logs created!"
-    grav_echo ""
-fi
-
-# Install Git, and required packages
-# Generate Locale
-function grav_install_dep()
-{
-    grav_echo "Installing required packages, please wait..."
-    apt-get -y install git  &>> /dev/null || grav_error "Unable to install required packages" $?
-    grav_echo_success "Success: Dependencies Installed"
-    grav_echo ""
-
-    # Generating Locale
-    locale-gen en &>> /dev/null
-}
-
-# Install NGINX
-function grav_install_nginx()
-{
-    grav_echo "Installing Nginx, please wait..."
-    echo "deb http://ppa.launchpad.net/nginx/stable/ubuntu $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/nginx-stable.list
-    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys C300EE8C &>> /dev/null
-    apt-get -yq install nginx || grav_error "Unable to install NGINX" 1
-    service nginx start &>> /dev/null
-    grav_echo_success "Success: Nginx Installed"
-    grav_echo ""
-}
-
-# Install Php for Nginx
-function grav_install_php()
-{
-    grav_echo "Installing PHP, please wait..."
-    apt-get -y install php5-fpm php5-cli php5-gd php5-curl php5-apcu &>> /dev/null || grav_error "Unable to install PHP" 1
-    grav_echo_success "Success: PHP Installed!"
-    grav_echo ""
-}
-
-# Configure PHP and Nginx
-function grav_configure_nginx()
-{
-    # Configure PHP
-    grav_echo "Configuring PHP"
-    cd /etc/php5/fpm/pool.d || grav_error "Could not cd /etc/php5/fpm/pool.d $1"
-    
-    
-    cat > grav.conf <<-grav_end_document
-[grav]
-
-user = grav
-group = grav
-
-listen = /var/run/php5-fpm.grav.sock
-
-listen.owner = www-data
-listen.group = www-data
-
-pm = dynamic
-pm.max_children = 5
-pm.start_servers = 2
-pm.min_spare_servers = 1
-pm.max_spare_servers = 3
-
-chdir = /
-grav_end_document
-    cat grav.conf
-    grav_echo_success "Success: PHP Configured!"
-    grav_echo ""
-    useradd -m grav
-    
-    # Create root directory
-    su - grav <<-grav_end_document
-    mkdir www
-    cd www
-    mkdir html
-    cd html #IN /home/grav/www/html/grav
-grav_end_document
-    
-    if [ -z "$HOSTNAME" ]; then
-        grav_prompt "Enter the hostname of the site: "
-        read grav_host_name
-    else
-        grav_host_name="$HOSTNAME"
-    fi
-    
-    
-    # Configure Nginx
-    cd /etc/nginx/sites-available/
-    cat > grav <<-grav_end_document
-server {
-    #listen 80;
-    index index.html index.php;
-
-    ## Begin - Server Info
-    root /home/grav/www/html;
-    server_name $grav_host_name;
-    ## End - Server Info
-
-    ## Begin - Index
-    # for subfolders, simply adjust the rewrite:
-    # to use `/subfolder/index.php`
-    location / {
-        try_files $uri $uri/ /index.html;
-        if (!-e $request_filename){ rewrite ^(.*)$ /index.php last; }
-    }
-    ## End - Index
-
-    ## Begin - PHP
-    location ~ \.php$ {
-        # Choose either a socket or TCP/IP address
-        fastcgi_pass unix:/var/run/php5-fpm.grav.sock;
-        # fastcgi_pass 127.0.0.1:9000;
-
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $document_root/$fastcgi_script_name;
-    }
-    ## End - PHP
-
-    ## Begin - Security
-    # deny all direct access for these folders
-    location ~* /(.git|cache|bin|logs|backups)/.*$ { return 403; }
-    # deny running scripts inside core system folders
-    location ~* /(system|vendor)/.*\.(txt|xml|md|html|yaml|php|pl|py|cgi|twig|sh|bat)$ { return 403; }
-    # deny running scripts inside user folder
-    location ~* /user/.*\.(txt|md|yaml|php|pl|py|cgi|twig|sh|bat)$ { return 403; }
-    # deny access to specific files in the root folder
-    location ~ /(LICENSE|composer.lock|composer.json|nginx.conf|web.config|htaccess.txt|\.htaccess) { return 403; }
-    ## End - Security
-}
-grav_end_document
-    cat grav
-    
-    cd ../sites-enabled
-    ln -s ../sites-available/grav
-    rm default
-    
-}
-
-# Install Grav
-function grav_install_grav()
-{
-
-    su - grav <<-grav_end_document
-# Remove old clone of Grav if any
-rm -rf /tmp/grav &>> /dev/null
-
-# Clone EE 3.0 Python ee_branch
-grav_echo "Cloning Grav, please wait..."
-if [ "$grav_branch" = "" ]; then
-    grav_branch=master
-fi
-#/home/$USER/www/html/grav-$grav_version
-git clone -b $grav_branch https://github.com/getgrav/grav.git /tmp/grav --quiet > /dev/null \ || grav_error "Unable to clone Grav, exit status" $? 
-
-grav_echo "Installing Grav, please wait..."
-
-cd ~/www
-rm -Rf html
-mv /tmp/grav html
-
-cd /html
-bin/grav install
-bin/grav clear
-
-grav_end_document
-    
-    service nginx restart
-}
-
-#Configur
-#NGINX /etc/nginx/nginx.conf
-
-grav_install_dep | tee -ai $grav_install_log
-grav_install_nginx | tee -ai $grav_install_log
-grav_install_php | tee -ai $grav_install_log
-grav_configure_nginx | tee -ai $grav_install_log
-grav_install_grav | tee -ai $grav_install_log
-
-grav_echo_success "Visit http://$grav_host_name"
+initialize
+install_nginx
+install_php_nginx
+install_grav
