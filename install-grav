@@ -69,7 +69,7 @@ function configure_nginx
     elif [ ! -e "$1" ]; then
         grav_echo_error "ERROR: File passed to 'configure_nginx' does not exist: $1 "
     fi
-    sed -i "s|\/home\/user\/www\/html;|\/home\/"${SUDO_USER:-$(whoami)}"\/www\/html;|g" $1 &>> /dev/null || grav_echo_erro "Issue setting server root"
+    sed -i "s|\/home\/USER\/www\/html;|\/home\/"${SUDO_USER:-$(whoami)}"\/www\/html;|g" $1 &>> /dev/null || grav_echo_erro "Issue setting server root"
     sed "s|server_name localhost;|"${2:-localhost}"|g" $1 &>> /dev/null || grav_echo_error "Issue replacing server name"
     cp $1 /etc/nginx/sites-available/$APPNAME
     if [ -e /etc/nginx/sites-enabled/$APPNAME ]; then
