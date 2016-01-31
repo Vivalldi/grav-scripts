@@ -47,7 +47,7 @@ function install_nginx
 {
     grav_echo "Installing NGINX"
     apt-get install -y nginx &>> /dev/null || grav_echo_error "Unable to install NGINX"
-    grav_echo "Finished Installing NGINX"
+    grav_echo_success "Finished Installing NGINX"
 }
 
 function install_php_nginx
@@ -58,7 +58,7 @@ function install_php_nginx
     # Configure PHP Processor
     sed -i s/\;cgi\.fix_pathinfo\s*\=\s*1/cgi.fix_pathinfo\=0/ /etc/php5/fpm/php.ini
     service php5-fpm restart
-    grav_echo "Finished Installing NGINX"
+    grav_echo_success "Finished Installing NGINX"
 }
 
 function configure_nginx
@@ -79,7 +79,7 @@ function configure_nginx
     ln -s /etc/nginx/sites-available/$APPNAME /etc/nginx/sites-enabled/$APPNAME
     
     service nginx restart
-    grav_echo "Finished Configuring NGINX"
+    grav_echo_success "Finished Configuring NGINX"
 }
 
 function install_grav
@@ -102,7 +102,9 @@ function install_grav
     find . -type d | xargs chmod +s
     su - $SUDO_USER -c "cd "$root"&&umask 0002&&bin/grav install&&bin/grav clear"
     configure_nginx /home/${SUDO_USER:-$(whoami)}/www/html/webserver-configs/nginx.conf
-    grav_echo "Finish Installing Grav"
+    grav_echo ""
+    
+    grav_echo_success "Finished Installing Grav"
 }
 
 function initialize
