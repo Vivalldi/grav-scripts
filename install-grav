@@ -72,7 +72,9 @@ function configure_nginx
     sed -i "s|\/home\/user\/www\/html;|\/home\/"${SUDO_USER:-$(whoami)}"\/www\/html;|g" $1 &>> /dev/null || grav_echo_erro "Issue setting server root"
     sed "s|server_name localhost;|"${2:-localhost}"|g" $1 &>> /dev/null || grav_echo_error "Issue replacing server name"
     cp $1 /etc/nginx/sites-available/$APPNAME
-    rm /etc/nginx/sites-enabled/$APPNAME
+    if [ -e /etc/nginx/sites-enabled/$APPNAME ]; then
+        rm /etc/nginx/sites-enabled/$APPNAME
+    fi
     rm /etc/nginx/sites-enabled/default
     ln -s /etc/nginx/sites-available/$APPNAME /etc/nginx/sites-enabled/$APPNAME
     
